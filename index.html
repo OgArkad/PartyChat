@@ -23,8 +23,8 @@
     }
 
     .message-log {
-      max-height: 250px;
-      width: 320px;
+      max-height: 450px;
+      width: 450px;
       overflow-y: auto;
       display: flex;
       flex-direction: column;
@@ -43,6 +43,12 @@
       color: #888888;
       font-size: 10px;
       margin-bottom: 2px;
+    }
+
+    .user-header {
+      color: #00ffff;
+      font-weight: bold;
+      margin-right: 4px;
     }
 
     .message-text {
@@ -70,6 +76,14 @@
       border-right: 1px solid #cecece;
       border-bottom: 1px solid #cecece;
       outline: none;
+    }
+
+    #usernameInput {
+      width: 90px;
+      font-weight: bold;
+    }
+
+    #userInput {
       width: 200px;
     }
 
@@ -104,6 +118,7 @@
     <div id="messageLog" class="message-log"></div>
 
     <div class="container">
+      <input type="text" id="usernameInput" placeholder="User..." title="Username">
       <input type="text" id="userInput" placeholder="Type message...">
       <button id="sendBtn">Send</button>
     </div>
@@ -117,7 +132,16 @@
 
     const sendBtn = document.getElementById('sendBtn');
     const userInput = document.getElementById('userInput');
+    const usernameInput = document.getElementById('usernameInput');
     const messageLog = document.getElementById('messageLog');
+
+    const displayedMessageIds = new Set();
+
+    usernameInput.value = localStorage.getItem('chat_username') || 'Guest_' + Math.floor(Math.random() * 899 + 100);
+
+    usernameInput.addEventListener('change', () => {
+      localStorage.setItem('chat_username', usernameInput.value.trim() || 'Anonymous');
+    });
 
     function formatDate(dateString) {
       const date = new Date(dateString);
@@ -131,7 +155,10 @@
       return `${year}.${month}.${day} ${hours}:${minutes}:${seconds}`;
     }
 
-    function appendMessageToUI(text, createdAt) {
+    function appendMessageToUI(text, createdAt, username, id) {
+      if (id && displayedMessageIds.has(id)) return;
+      if (id) displayedMessageIds.add(id);
+
       const entry = document.createElement('div');
       entry.className = 'message-entry';
 
@@ -139,9 +166,17 @@
       timeDiv.className = 'timestamp';
       timeDiv.textContent = `[${formatDate(createdAt)}]`;
 
+      const userSpan = document.createElement('span');
+      userSpan.className = 'user-header';
+      userSpan.textContent = `${username || 'Anonymous'}: `;
+
       const textDiv = document.createElement('div');
       textDiv.className = 'message-text';
-      textDiv.innerHTML = text;
+      textDiv.appendChild(userSpan);
+
+      const contentSpan = document.createElement('span');
+      contentSpan.innerHTML = text;
+      textDiv.appendChild(contentSpan);
 
       entry.appendChild(timeDiv);
       entry.appendChild(textDiv);
@@ -163,22 +198,34 @@
 
       messageLog.innerHTML = '';
       data.forEach(msg => {
-        appendMessageToUI(msg.text, msg.created_at);
+        appendMessageToUI(msg.text, msg.created_at, msg.username, msg.id);
       });
     }
 
     async function sendMessage() {
       const message = userInput.value.trim();
+      const username = usernameInput.value.trim() || 'Anonymous';
+
       if (message !== "") {
-        const { error } = await supabaseClient
+        localStorage.setItem('chat_username', username);
+
+        const tempDate = new Date().toISOString();
+        const tempId = 'temp_' + Date.now();
+
+        appendMessageToUI(message, tempDate, username, tempId);
+
+        userInput.value = "";
+
+        const { data, error } = await supabaseClient
           .from('messages')
-          .insert([{ text: message }]);
+          .insert([{ text: message, username: username }])
+          .select();
 
         if (error) {
           console.error('Error sending message:', error);
           alert('Failed to send message.');
-        } else {
-          userInput.value = "";
+        } else if (data && data[0]) {
+          displayedMessageIds.add(data[0].id);
         }
       }
     }
@@ -186,7 +233,7 @@
     supabaseClient
       .channel('public:messages')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
-        appendMessageToUI(payload.new.text, payload.new.created_at);
+        appendMessageToUI(payload.new.text, payload.new.created_at, payload.new.username, payload.new.id);
       })
       .subscribe();
 
