@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Party Chat</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     body {
       background-color: #000000;
@@ -109,11 +110,17 @@
   </div>
 
   <script>
+    const SUPABASE_URL = 'https://tnuckzbedblrltewihml.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_lZfcvaii57n04sTb7Xt3aw_nUVM3C9t';
+
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
     const sendBtn = document.getElementById('sendBtn');
     const userInput = document.getElementById('userInput');
     const messageLog = document.getElementById('messageLog');
 
-    function formatDate(date) {
+    function formatDate(dateString) {
+      const date = new Date(dateString);
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, '0');
       const day = String(date.getDate()).padStart(2, '0');
@@ -124,32 +131,64 @@
       return `${year}.${month}.${day} ${hours}:${minutes}:${seconds}`;
     }
 
-    function sendMessage() {
+    function appendMessageToUI(text, createdAt) {
+      const entry = document.createElement('div');
+      entry.className = 'message-entry';
+
+      const timeDiv = document.createElement('div');
+      timeDiv.className = 'timestamp';
+      timeDiv.textContent = `[${formatDate(createdAt)}]`;
+
+      const textDiv = document.createElement('div');
+      textDiv.className = 'message-text';
+      textDiv.textContent = text;
+
+      entry.appendChild(timeDiv);
+      entry.appendChild(textDiv);
+
+      messageLog.appendChild(entry);
+      messageLog.scrollTop = messageLog.scrollHeight;
+    }
+
+    async function loadMessages() {
+      const { data, error } = await supabaseClient
+        .from('messages')
+        .select('*')
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching messages:', error);
+        return;
+      }
+
+      messageLog.innerHTML = '';
+      data.forEach(msg => {
+        appendMessageToUI(msg.text, msg.created_at);
+      });
+    }
+
+    async function sendMessage() {
       const message = userInput.value.trim();
       if (message !== "") {
-        const now = new Date();
-        const timeString = formatDate(now);
+        const { error } = await supabaseClient
+          .from('messages')
+          .insert([{ text: message }]);
 
-        const entry = document.createElement('div');
-        entry.className = 'message-entry';
-
-        const timeDiv = document.createElement('div');
-        timeDiv.className = 'timestamp';
-        timeDiv.textContent = `[${timeString}]`;
-
-        const textDiv = document.createElement('div');
-        textDiv.className = 'message-text';
-        textDiv.textContent = message;
-
-        entry.appendChild(timeDiv);
-        entry.appendChild(textDiv);
-
-        messageLog.appendChild(entry);
-        messageLog.scrollTop = messageLog.scrollHeight; // Auto-scroll to latest message
-
-        userInput.value = "";
+        if (error) {
+          console.error('Error sending message:', error);
+          alert('Failed to send message.');
+        } else {
+          userInput.value = "";
+        }
       }
     }
+
+    supabaseClient
+      .channel('public:messages')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
+        appendMessageToUI(payload.new.text, payload.new.created_at);
+      })
+      .subscribe();
 
     sendBtn.addEventListener('click', sendMessage);
 
@@ -158,6 +197,8 @@
         sendMessage();
       }
     });
+
+    loadMessages();
   </script>
 
 </body>
