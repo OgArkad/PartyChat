@@ -8,7 +8,7 @@
     body {
       background-color: #000000;
       color: #ffffff;
-      font-family: "Lucida Grande", Verdana, Arial, sans-serif;
+      font-family: Verdana, Arial, sans-serif;
       margin: 0;
       height: 100vh;
     }
@@ -33,20 +33,20 @@
 
     .message-entry {
       font-size: 11px;
-      background: #111111;
-      border: 1px solid #333333;
+      background: #030303;
+      border: 1px solid #3b3b3b;
       padding: 6px;
       word-wrap: break-word;
     }
 
     .timestamp {
-      color: #888888;
+      color: #979595;
       font-size: 10px;
       margin-bottom: 2px;
     }
 
     .user-header {
-      color: #00ffff;
+      color: #3affff;
       font-weight: bold;
       margin-right: 4px;
     }
@@ -78,7 +78,7 @@
       outline: none;
     }
 
-    #usernameInput {
+    #nameInput {
       width: 90px;
       font-weight: bold;
     }
@@ -102,12 +102,12 @@
 
     button:hover {
       background: linear-gradient(to bottom, #ffffff 0%, #eaf2fb 50%, #d0e1f9 100%);
-      border-color: #3c7fb1;
+      border-color: #4d90c4;
       color: #000000;
     }
 
     button:active {
-      background: #c0c0c0;
+      background: #e2e2e2;
       box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);
     }
   </style>
@@ -115,12 +115,12 @@
 <body>
 
   <div class="chat-wrapper">
-    <div id="messageLog" class="message-log"></div>
+    <div id="msgHistory" class="message-log"></div>
 
     <div class="container">
-      <input type="text" id="usernameInput" placeholder="User..." title="Username">
+      <input type="text" id="nameInput" placeholder="User..." title="Username">
       <input type="text" id="userInput" placeholder="Type message...">
-      <button id="sendBtn">Send</button>
+      <button id="send">Send</button>
     </div>
   </div>
 
@@ -128,124 +128,126 @@
     const SUPABASE_URL = 'https://tnuckzbedblrltewihml.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_lZfcvaii57n04sTb7Xt3aw_nUVM3C9t';
 
-    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    const sendBtn = document.getElementById('sendBtn');
-    const userInput = document.getElementById('userInput');
-    const usernameInput = document.getElementById('usernameInput');
-    const messageLog = document.getElementById('messageLog');
+    //send button
+    let sendButton = document.getElementById("send");
+    //message window
+    let userInput = document.getElementById("userInput");
+    //username window
+    let nameInput = document.getElementById("nameInput");
+    //where all the messages are shown
+    let msgHistory = document.getElementById("msgHistory");
 
-    const displayedMessageIds = new Set();
+    //ids of the messages that are already on the screen, so nothing shows up twice
+    let shownMessages = new Set();
 
-    usernameInput.value = localStorage.getItem('chat_username') || 'Guest_' + Math.floor(Math.random() * 899 + 100);
+    nameInput.value = localStorage.getItem("chat_username") || "Guest_" + Math.floor(Math.random() * 899 + 100);
 
-    usernameInput.addEventListener('change', () => {
-      localStorage.setItem('chat_username', usernameInput.value.trim() || 'Anonymous');
+    /*---------------ADDEVENTLISTENER PART--------------*/
+
+    nameInput.addEventListener("change", function () {
+        localStorage.setItem("chat_username", nameInput.value.trim() || "Anonymous");
     });
 
-    function formatDate(dateString) {
-      const date = new Date(dateString);
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      const hours = String(date.getHours()).padStart(2, '0');
-      const minutes = String(date.getMinutes()).padStart(2, '0');
-      const seconds = String(date.getSeconds()).padStart(2, '0');
+    sendButton.addEventListener("click", function () {
+        sendMessage();
+    });
 
-      return `${year}.${month}.${day} ${hours}:${minutes}:${seconds}`;
+    userInput.addEventListener("keypress", function (e) {
+        if (e.key === "Enter") {
+            sendMessage();
+        }
+    });
+
+    //live messages from other people
+    supabaseClient
+        .channel("public:messages")
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, function (payload) {
+            showMessage(payload.new.text, payload.new.created_at, payload.new.username, payload.new.id);
+        })
+        .subscribe();
+
+    window.addEventListener("DOMContentLoaded", function () {
+        loadMessages();
+    });
+
+    /*---------------CHAT LOGIC--------------*/
+
+    //makes the date look like 2026.11.01 14:53:20
+    function formatDate(dateString) {
+        let date = new Date(dateString);
+
+        let year = date.getFullYear();
+        let month = String(date.getMonth() + 1).padStart(2, "0");
+        let day = String(date.getDate()).padStart(2, "0");
+        let hours = String(date.getHours()).padStart(2, "0");
+        let minutes = String(date.getMinutes()).padStart(2, "0");
+        let seconds = String(date.getSeconds()).padStart(2, "0");
+
+        return `${year}.${month}.${day} ${hours}:${minutes}:${seconds}`;
     }
 
-    function appendMessageToUI(text, createdAt, username, id) {
-      if (id && displayedMessageIds.has(id)) return;
-      if (id) displayedMessageIds.add(id);
+    function showMessage(text, createdAt, username, id) {
+        if (id && shownMessages.has(id)) return;
+        if (id) shownMessages.add(id);
 
-      const entry = document.createElement('div');
-      entry.className = 'message-entry';
+        let entry = document.createElement("div");
+        entry.className = "message-entry";
 
-      const timeDiv = document.createElement('div');
-      timeDiv.className = 'timestamp';
-      timeDiv.textContent = `[${formatDate(createdAt)}]`;
+        entry.innerHTML = `
+            <div class="timestamp">[${formatDate(createdAt)}]</div>
+            <div class="message-text">
+                <span class="user-header">${username || "Anonymous"}: </span>
+                <span>${text}</span>
+            </div>
+        `;
 
-      const userSpan = document.createElement('span');
-      userSpan.className = 'user-header';
-      userSpan.textContent = `${username || 'Anonymous'}: `;
-
-      const textDiv = document.createElement('div');
-      textDiv.className = 'message-text';
-      textDiv.appendChild(userSpan);
-
-      const contentSpan = document.createElement('span');
-      contentSpan.innerHTML = text;
-      textDiv.appendChild(contentSpan);
-
-      entry.appendChild(timeDiv);
-      entry.appendChild(textDiv);
-
-      messageLog.appendChild(entry);
-      messageLog.scrollTop = messageLog.scrollHeight;
+        msgHistory.appendChild(entry);
+        msgHistory.scrollTop = msgHistory.scrollHeight;
     }
 
     async function loadMessages() {
-      const { data, error } = await supabaseClient
-        .from('messages')
-        .select('*')
-        .order('created_at', { ascending: true });
+        const { data, error } = await supabaseClient
+            .from("messages")
+            .select("*")
+            .order("created_at", { ascending: true });
 
-      if (error) {
-        console.error('Error fetching messages:', error);
-        return;
-      }
+        if (error) { console.error(error); return; }
 
-      messageLog.innerHTML = '';
-      data.forEach(msg => {
-        appendMessageToUI(msg.text, msg.created_at, msg.username, msg.id);
-      });
+        msgHistory.innerHTML = "";
+        for (let msg of data) {
+            showMessage(msg.text, msg.created_at, msg.username, msg.id);
+        }
     }
 
     async function sendMessage() {
-      const message = userInput.value.trim();
-      const username = usernameInput.value.trim() || 'Anonymous';
+        let message = userInput.value.trim();
+        let username = nameInput.value.trim() || "Anonymous";
 
-      if (message !== "") {
-        localStorage.setItem('chat_username', username);
+        if (message === "") return;
 
-        const tempDate = new Date().toISOString();
-        const tempId = 'temp_' + Date.now();
+        localStorage.setItem("chat_username", username);
 
-        appendMessageToUI(message, tempDate, username, tempId);
-
+        //show it instantly, the real one from the database is skipped by the id check
+        showMessage(message, new Date().toISOString(), username, "temp_" + Date.now());
         userInput.value = "";
 
         const { data, error } = await supabaseClient
-          .from('messages')
-          .insert([{ text: message, username: username }])
-          .select();
+            .from("messages")
+            .insert([{ text: message, username: username }])
+            .select();
 
         if (error) {
-          console.error('Error sending message:', error);
-          alert('Failed to send message.');
-        } else if (data && data[0]) {
-          displayedMessageIds.add(data[0].id);
+            console.error(error);
+            alert("Failed to send message.");
+            return;
         }
-      }
+
+        if (data && data[0]) {
+            shownMessages.add(data[0].id);
+        }
     }
-
-    supabaseClient
-      .channel('public:messages')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
-        appendMessageToUI(payload.new.text, payload.new.created_at, payload.new.username, payload.new.id);
-      })
-      .subscribe();
-
-    sendBtn.addEventListener('click', sendMessage);
-
-    userInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        sendMessage();
-      }
-    });
-
-    loadMessages();
   </script>
 
 </body>
